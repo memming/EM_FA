@@ -1,0 +1,273 @@
+\documentclass{article}
+
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=3cm]{geometry}
+\usepackage{amsmath,amssymb}
+
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator*{\E}{\rm E}
+\DeclareMathOperator*{\var}{var}
+\DeclareMathOperator*{\cov}{cov}
+\DeclareMathOperator*{\argmax}{\rm argmax}
+\DeclareMathOperator*{\argmin}{\rm argmin}
+\DeclareMathOperator{\tr}{tr}
+
+\newcommand{\identity}{\ensuremath{\mathbb{I}}}
+\newcommand{\gaussian}{\ensuremath{\mathcal{N}}}
+\newcommand{\trp}{{^\top}} % transpose
+\newcommand{\inv}{^{-1}}
+\newcommand{\oneHalf}{\frac{1}{2}}
+\newcommand{\hadamard}{\circ}
+
+\usepackage{forloop}
+\newcommand{\defvec}[1]{\expandafter\newcommand\csname v#1\endcsname{{\mathbf{#1}}}}
+\newcounter{ct}
+\forLoop{1}{26}{ct}{
+    \edef\letter{\alph{ct}}
+    \expandafter\defvec\letter
+}
+\forLoop{1}{26}{ct}{
+    \edef\letter{\Alph{ct}}
+    \expandafter\defvec\letter
+}
+
+\AtBeginDocument{\setlength\abovedisplayskip{5pt}}
+\AtBeginDocument{\setlength\belowdisplayskip{5pt}}
+
+\title{EM for factor analysis}
+\author{I. Memming Park}
+\begin{document}
+\maketitle
+Factor Analysis (FA) is usually not fit by expectation-maximization (EM), but we do it anyways.
+%This document describes Memming's struggle in implementing EM for FA; he presented this in the computational neuroscience journal club at the University of Texas at Austin on August 6th, 2014.
+
+The generative model for FA is given by~\cite{Roweis1999},
+\begin{align}\label{eq:model}
+    \vx_i &\sim \gaussian(0, \vI)\nonumber\\
+    \vy_i &\sim \gaussian(\vC\vx_i, \vR)\\
+    \vR &= \diag(\sigma_1^2, \cdots, \sigma_p^2)\nonumber
+\end{align}
+where $\vx$ is a $q$-dimensional latent variable,
+$\vy$ is a $p$-dimensional observation, and $q < p$.
+$\vC$ is a $(p \times q)$ factor loadings matrix, and
+$\vR$ is the covariance representing independent noise in each observed
+dimension.
+
+Note that $\vx$ and $\vy$ are jointly normal, in fact~\cite{Bishop2006},
+\begin{align}
+    \begin{bmatrix}
+	\vx_i\\\vy_i
+    \end{bmatrix}
+    &=
+    \gaussian\left(0, \begin{bmatrix}
+	    \vI & \vC\trp\\
+	    \vC & \vR + \vC\vC\trp
+	\end{bmatrix}
+    \right).
+\end{align}
+Also, the posterior over the latents is given by,
+\begin{align}\label{eq:latent:posterior}
+    \vx_i | \vy_i &\sim \gaussian\left(\mu, \Lambda\right),
+\end{align}
+where
+\begin{align}
+    \label{eq:estep}
+    \Lambda &= \left(\vI + \vC\trp \vR\inv \vC\right)\inv,\nonumber\\
+    \mu_i &= \Lambda \vC \vR\inv \vy_i.
+\end{align}
+Note that the covariance of the latent doesn't depend on the sample.
+Our goal is to find the parameters $\theta = \{\vC, \vR\}$ that maximizes the
+likelihood $p(\vy|\theta)$.
+
+In the E-step, we minimize the KL divergence between $Q(x)$ and
+$p(\vx|\vy,\theta)$, which can be achieved by setting $Q(x) =
+p(\vx|\vy,\theta)$. Hence, \eqref{eq:estep} corresponds to the computation
+required for the E-step.
+
+In the M-step, we maximize the conditional expectation of the total data
+log-likelihood with respect to $\theta$, i.e.,
+\begin{align}\label{eq:mstep:objective}
+    \theta_{\mathrm{new}} =
+	\argmax_\theta
+	\E_{\vx\sim Q}
+	    \left[
+		\sum_i \log
+		    p(\vy_i, \vx_i|\theta)
+	    \right]
+\end{align}
+To compute the expectation, it's convenient to define the following quantities~\cite{Rubin1982}:
+\begin{align}
+    \delta &= \Lambda \vC \vR\inv\\
+    \Sigma_{yy} &= \frac{1}{N}\sum_i \vy_i \vy_i\trp\\
+    \Sigma_{yx} &= \frac{1}{N}\E_{\vx \sim Q} \left[ \sum_i \vy_i \vx_i\trp \right]
+	= \frac{1}{N}\sum_i \vy_i \mu_i\trp
+	= \frac{1}{N}\sum_i \vy_i \vy_i\trp \delta\trp
+	= \Sigma_{yy} \delta\trp\\
+    \Sigma_{xx} &= \frac{1}{N}\E_{\vx \sim Q} \left[ \sum_i \vx_i \vx_i\trp \right]
+	= \frac{1}{N} \sum_i 
+	    \left(
+		\cov_{\vx\sim Q}(\vx_i) + \mu_i\mu_i\trp
+	    \right)
+	= \Lambda + \delta\Sigma_{yy}\delta\trp
+\end{align}
+Note that the total data log-likelihood can be written as,
+\begin{align}
+    \sum_i \log p(\vy_i, \vx_i|\theta) 
+    &=
+    \sum_i \log p(\vy_i| \vx_i\theta) 
+    +
+    \sum_i \log p(\vx_i),
+\end{align}
+and the second term does not depend on the parameters $\theta$, hence
+our objective in \eqref{eq:mstep:objective} can simply be written as,
+\begin{align}
+\theta_{\mathrm{new}} =
+    \argmax_\theta
+    \E_{\vx\sim Q}
+	\left[
+	    \sum_i \log
+		p(\vy_i, \vx_i|\theta)
+	\right] =
+\frac{1}{N}\E_{\vx\sim Q}
+    \left[
+	\sum_i \log
+	    p(\vy_i| \vx_i, \theta)
+    \right]
+\end{align}
+where $N$ is the number of i.i.d. samples.
+\begin{align*}
+\frac{1}{N} & \sum_{i=1}^N \log\left(
+	p(\vy_i| \vx_i, \theta)
+    \right)
+    \nonumber\\
+    &=
+    -\oneHalf \log |\vR|
+    -\oneHalf 
+    \frac{1}{N}
+    \sum_i
+	\left(\vC \vx_i - \vy_i\right)\trp
+	\vR\inv
+	\left(\vC \vx_i - \vy_i\right)
+    \\
+    &=
+    -\oneHalf \log |\vR|
+    -\oneHalf 
+    \frac{1}{N}
+    \sum_i
+	\left(
+	    \vx_i\trp\vC\trp \vR\inv \vC \vx_i
+	    +\vy_i\trp \vR\inv \vy_i
+	    -2\vy_i\trp \vR\inv \vC \vx_i
+	    %-\vx_i\trp\vC\trp \vR\inv \vy_i
+	\right)
+    \\
+    &=
+    -\oneHalf \log |\vR|
+    -\oneHalf 
+	\left(
+	    \tr\left[
+		\vC\trp \vR\inv \vC 
+		\frac{1}{N} \sum_i
+		    \vx_i\vx_i\trp
+	    \right]
+	    +
+	    \tr\left[
+		\vR\inv 
+		\frac{1}{N} \sum_i
+		    \vy_i \vy_i\trp 
+	    \right]
+	    -
+	    2\tr\left[
+		\vR\inv \vC 
+		\frac{1}{N} \sum_i
+		    \vx_i \vy_i\trp 
+	    \right]
+	\right)
+\end{align*}
+Now, taking the expectation over $\vx \sim Q$,
+\begin{align}
+\frac{1}{N}
+    \E_{\vx\sim Q}&\left[
+\sum_{i=1}^N \log\left(
+	p(\vy_i| \vx_i, \theta)
+    \right)
+\right]
+    \nonumber\\
+    &=
+    -\oneHalf \log |\vR|
+    -\oneHalf 
+	\left(
+	    \tr\left[
+		\vC\trp \vR\inv \vC 
+		\Sigma_{xx}
+	    \right]
+	    +
+	    \tr\left[
+		\vR\inv 
+		\Sigma_{yy}
+	    \right]
+	    -
+	    2\tr\left[
+		\vR\inv \vC 
+		\Sigma_{xy}
+	    \right]
+	\right),
+\end{align}
+where constant terms are omitted.
+Keep in mind that $\Sigma_{xx}$ and $\Sigma_{xy}$'s dependence on parameters
+are through $Q$, and hence fixed during the M-step update.
+We find the stationary points by inspecting the partial derivatives with
+respect to the parameters.
+\begin{align}\label{eq:mstep:C}
+&\frac{\partial}{\partial C}
+= \vR\inv \hat{\vC} \Sigma_{xx} - \vR\inv \Sigma_{xy}\trp = 0
+\\
+& \implies \hat{\vC} = \Sigma_{yx}\Sigma_{xx}\inv
+= \Sigma_{yy} \delta\trp (\Lambda + \delta\Sigma_{yy}\delta\trp)\inv
+\end{align}
+%
+\begin{align}\label{eq:mstep:R}
+\frac{\partial}{\partial R\inv}
+&= \oneHalf \vR -\oneHalf \vC\Sigma_{xx}\vC\trp \hadamard \vI 
+- \oneHalf\Sigma_{yy} \hadamard \vI + \Sigma_{yx}\vC\trp \hadamard \vI  = 0
+\\
+\implies \vR &= 
+\left(
+    \vC\Sigma_{xx}\vC\trp + \Sigma_{yy} - 2\Sigma_{yx}\vC\trp
+\right) \hadamard \vI
+\\
+&=
+\left(
+    \Sigma_{yy} \delta\trp (\Lambda + \delta\Sigma_{yy}\delta\trp)\inv
+    %(\Lambda + \delta\Sigma_{yy}\delta\trp)
+    %(\Lambda + \delta\Sigma_{yy}\delta\trp)\inv
+    \delta
+    \Sigma_{yy} 
+    + \Sigma_{yy} 
+    - 2\Sigma_{yy} \delta\trp
+    (\Lambda + \delta\Sigma_{yy}\delta\trp)\inv
+    \delta
+    \Sigma_{yy} 
+\right) \hadamard \vI
+\\
+&=
+\left(
+    \Sigma_{yy} 
+    -
+    \Sigma_{yy} \delta\trp (\Lambda + \delta\Sigma_{yy}\delta\trp)\inv
+    \delta
+    \Sigma_{yy} 
+\right) 
+\hadamard \vI
+\label{eq:mstep:Rubin}
+\\
+&=
+\left(
+    \Sigma_{yy}\inv + \delta\trp\Lambda\delta
+\right)\inv
+\hadamard \vI
+\end{align}
+\eqref{eq:mstep:Rubin} is proposed by~\cite{Rubin1982}.
+
+\bibliographystyle{plain}
+\bibliography{emfa}
+\end{document}
