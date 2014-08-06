@@ -12,7 +12,7 @@ y0 = bsxfun(@minus, y, mean(y));
 Sigma_yy = y0' * y0 / N; % empirical covariance of observation
 
 %% Set up parameters for FA
-qGuess = 3; % latent dimensionality
+qGuess = 2; % latent dimensionality
 assert(size(y, 2) > qGuess, 'p > q');
 maxIteration = 5000;
 tol = 1e-6;

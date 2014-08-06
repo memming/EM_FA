@@ -96,7 +96,7 @@ log-likelihood with respect to $\theta$, i.e.,
 \end{align}
 To compute the expectation, it's convenient to define the following quantities~\cite{Rubin1982}:
 \begin{align}
-    \delta &= \Lambda \vC \vR\inv\\
+    \delta &= \Lambda \vC\trp \vR\inv\\
     \Sigma_{yy} &= \frac{1}{N}\sum_i \vy_i \vy_i\trp\\
     \Sigma_{yx} &= \frac{1}{N}\E_{\vx \sim Q} \left[ \sum_i \vy_i \vx_i\trp \right]
 	= \frac{1}{N}\sum_i \vy_i \mu_i\trp
